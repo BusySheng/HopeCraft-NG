@@ -73,6 +73,9 @@ public final class HopeCraft extends JavaPlugin {
         Objects.requireNonNull(getCommand("hopecraft")).setExecutor(this);
         Objects.requireNonNull(getCommand("skull")).setExecutor(this);
         Objects.requireNonNull(getCommand("birthday")).setExecutor(this);
+        Objects.requireNonNull(getCommand("suicide")).setExecutor(this);
+        Objects.requireNonNull(getCommand("heal")).setExecutor(this);
+        Objects.requireNonNull(getCommand("feed")).setExecutor(this);
        // Objects.requireNonNull(getCommand("warp")).setTabCompleter(this);
         Objects.requireNonNull(getCommand("hopecraft")).setTabCompleter(this);
 
@@ -582,12 +585,6 @@ public final class HopeCraft extends JavaPlugin {
     private void openMainMenu(Player player) {
         Inventory menu = Bukkit.createInventory(null, 54, "HopeCraft 主菜单");
 
-        // === ShiftAndF 状态按钮 ===
-        if(player.hasPermission("hopecraft.admin")) {
-            ItemStack shiftFToggle = getItemStack();
-            menu.setItem(22, shiftFToggle);  // 菜单中心附近
-        }
-
         // 传送按钮
         ItemStack teleportItem = new ItemStack(Material.COMPASS);
         ItemMeta teleportMeta = teleportItem.getItemMeta();
@@ -661,22 +658,6 @@ public final class HopeCraft extends JavaPlugin {
         menu.setItem(31, motdItem);
 
         player.openInventory(menu);//后面别加东西
-    }
-
-    private @NotNull ItemStack getItemStack() {
-        ItemStack shiftFToggle = new ItemStack(
-                shiftFEnabled ? Material.LIME_DYE : Material.GRAY_DYE
-        );
-        ItemMeta shiftFMeta = shiftFToggle.getItemMeta();
-        shiftFMeta.setDisplayName(ChatColor.YELLOW + "Shift+F快捷键");
-        List<String> shiftFLore = new ArrayList<>();
-        shiftFLore.add(ChatColor.GRAY + "状态: " + (shiftFEnabled ?
-                ChatColor.GREEN + "已启用" : ChatColor.RED + "已禁用"));
-        shiftFLore.add(ChatColor.GRAY + "可执行命令数量: " + ChatColor.GOLD + shiftFCommands.size());
-        shiftFLore.add(ChatColor.DARK_GRAY + "点击切换状态");
-        shiftFMeta.setLore(shiftFLore);
-        shiftFToggle.setItemMeta(shiftFMeta);
-        return shiftFToggle;
     }
 
     // ========== 命令处理 ==========
@@ -834,6 +815,55 @@ public final class HopeCraft extends JavaPlugin {
             return true;
         }
 
+        // === 实用命令 ===
+        if (cmd.getName().equalsIgnoreCase("suicide")) {
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(ChatColor.RED + "只有玩家可以使用此命令！");
+                return true;
+            }
+            if (player.isDead()) {
+                player.sendMessage(ChatColor.RED + "你已经死亡了！");
+                return true;
+            }
+            player.setHealth(0); // 直接致死（生存/冒险模式）
+            player.sendMessage(ChatColor.GRAY + "你自杀了。");
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("heal")) {
+            if (!sender.hasPermission("hopecraft.heal")) {
+                sender.sendMessage(ChatColor.RED + "权限不足！");
+                return true;
+            }
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(ChatColor.RED + "只有玩家可以使用此命令！");
+                return true;
+            }
+            player.setHealth(player.getMaxHealth());
+            player.setFoodLevel(20);
+            player.setSaturation(20f);
+            player.setExhaustion(0f);
+            player.setFireTicks(0);
+            player.sendMessage(ChatColor.GREEN + "生命值与饱食度已恢复！");
+            return true;
+        }
+
+        if (cmd.getName().equalsIgnoreCase("feed")) {
+            if (!sender.hasPermission("hopecraft.feed")) {
+                sender.sendMessage(ChatColor.RED + "权限不足！");
+                return true;
+            }
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(ChatColor.RED + "只有玩家可以使用此命令！");
+                return true;
+            }
+            player.setFoodLevel(20);
+            player.setSaturation(20f);
+            player.setExhaustion(0f);
+            player.sendMessage(ChatColor.GREEN + "饱食度已恢复！");
+            return true;
+        }
+
 
         return false;//这个在最后一行，不要想着在这行后面加别的条件判断或者其他语句
     }
@@ -928,20 +958,24 @@ public final class HopeCraft extends JavaPlugin {
         @EventHandler
         public void onInventoryClick(InventoryClickEvent event) {
             if (!(event.getWhoClicked() instanceof Player player)) return;
-            // MOTD按钮处理
-            if (event.getView().getTitle().equals("HopeCraft 主菜单") && event.getRawSlot() == 31) {
+
+            String title = event.getView().getTitle();
+
+            // 主菜单处理（含 F 键交换副手）：先整体取消交互，
+            // 防止物品被放入菜单栏位（包括按 F 把副手物品塞进空栏位）。
+            if (title.equals("HopeCraft 主菜单")) {
                 event.setCancelled(true);
 
-                Player p = (Player) event.getWhoClicked(); // 使用新变量名
-                p.performCommand("motd");
-                p.closeInventory();
-            }
-            ItemStack clicked = event.getCurrentItem();
-            if (clicked == null) return;
+                // MOTD按钮处理
+                if (event.getRawSlot() == 31) {
+                    Player p = (Player) event.getWhoClicked(); // 使用新变量名
+                    p.performCommand("motd");
+                    p.closeInventory();
+                    return;
+                }
 
-            // 主菜单处理
-            if (event.getView().getTitle().equals("HopeCraft 主菜单")) {
-                event.setCancelled(true);
+                ItemStack clicked = event.getCurrentItem();
+                if (clicked == null) return;
 
                 switch (event.getRawSlot()) {
                     case 49: // 传送
@@ -978,18 +1012,10 @@ public final class HopeCraft extends JavaPlugin {
                     case 4: // 生日信息
                         openBirthdayMenu(player);
                         break;
-
-                    // === ShiftAndF 菜单按钮 ===
-                    case 22:
-                        shiftFEnabled = !shiftFEnabled;
-                        player.sendMessage(ChatColor.GREEN + "Shift+F快捷键: " +
-                                (shiftFEnabled ? "已启用" : "已禁用"));
-                        openMainMenu(player); // 刷新菜单显示新状态
-                        break;
                 }
             }
             // 生日子菜单处理
-            else if (event.getView().getTitle().equals("生日信息")) {
+            else if (title.equals("生日信息")) {
                 event.setCancelled(true);
 
                 switch (event.getRawSlot()) {
